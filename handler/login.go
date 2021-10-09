@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/sha1"
 	"github.com/cty123/trinity-auth-server/crypto"
 	"github.com/cty123/trinity-auth-server/infrastructure"
 	"github.com/cty123/trinity-auth-server/protocol"
@@ -69,12 +70,12 @@ func (handler *LoginHandler) HandleAuthLogon(conn infrastructure.Connection) err
 	salt := account.Salt
 	verifier := account.Verifier
 
-	B, err := crypto.ComputerPublicB(verifier)
+	B, err := crypto.ComputePublicB(verifier[:])
 	if err != nil {
 		return err
 	}
 
-	random, err := crypto.Nounce()
+	random, err := crypto.GetRandomNounce()
 	if err != nil {
 		return err
 	}
@@ -109,6 +110,15 @@ func (handler *LoginHandler) HandleAuthLogonProof(conn infrastructure.Connection
 		return err
 	}
 
+	A := packet.A
+	clientM := packet.ClientM
+
+	h := sha1.New()
+	h.Write(A[:])
+	h.Write(clientM[:])
+	h.Sum(nil)
+
+	//S := A
 	// Don't check anything and just return success
 	conn.WriteByte(1)
 	conn.WriteByte(0)
