@@ -1,21 +1,22 @@
 package handler
 
 import (
-	"crypto/sha1"
+	"github.com/cty123/trinity-auth-server/application"
 	"github.com/cty123/trinity-auth-server/crypto"
 	"github.com/cty123/trinity-auth-server/infrastructure"
 	"github.com/cty123/trinity-auth-server/protocol"
 	"github.com/cty123/trinity-auth-server/service"
 	log "github.com/sirupsen/logrus"
+	"math/big"
 )
 
 type LoginHandler struct {
-	handlerMap     map[uint8]func(infrastructure.Connection) error
+	handlerMap     map[uint8]func(session *application.Session) error
 	accountService *service.AccountService
 }
 
 func NewLoginHandler(accountService *service.AccountService) LoginHandler {
-	handlerMap := make(map[uint8]func(infrastructure.Connection) error)
+	handlerMap := make(map[uint8]func(session *application.Session) error)
 	handler := LoginHandler{
 		handlerMap,
 		accountService,
@@ -32,9 +33,11 @@ func (handler *LoginHandler) initialize() {
 func (handler *LoginHandler) Handle(conn infrastructure.Connection) error {
 	defer conn.Close()
 
+	session := application.NewSession(&conn)
+
 	for {
 		// Read command byte
-		cmd, err := conn.PeekByte()
+		cmd, err := session.ReadCommand()
 		if err != nil {
 			return err
 		}
@@ -43,87 +46,76 @@ func (handler *LoginHandler) Handle(conn infrastructure.Connection) error {
 
 		// Get handler from map and invoke handler
 		handlerFunc := handler.handlerMap[cmd]
-		if err := handlerFunc(conn); err != nil {
+		if err := handlerFunc(session); err != nil {
 			return err
 		}
 	}
 }
 
-func (handler *LoginHandler) HandleAuthLogon(conn infrastructure.Connection) error {
+func (handler *LoginHandler) HandleAuthLogon(session *application.Session) error {
 	// Read the packet from connection
-	packet := protocol.AuthLogonRequest{}
-	if err := infrastructure.Deserialize(conn, &packet); err != nil {
-		log.Info("Error encountered while reading AuthLogon packet: ", err)
+	_, accountName, err := session.ReadAuthLogonRequest()
+	if err != nil {
 		return err
 	}
 
-	// Read account name based on the packet header
-	accountBuffer := make([]byte, packet.ChallengeLength)
-	if _, err := conn.Read(accountBuffer); err != nil {
-		return err
-	}
-
-	accountName := string(accountBuffer)
+	// Retrieve the account from database
 	account := handler.accountService.FindAccountByAccountName(accountName)
 
-	// Compute srp6 public key
-	salt := account.Salt
-	verifier := account.Verifier
+	session.SetVerifier(account.Verifier)
 
-	B, err := crypto.ComputePublicB(verifier[:])
-	if err != nil {
-		return err
-	}
+	N := crypto.GetN()
+	b := crypto.GetRandomB()
+	B := crypto.ComputePublicB(session.Verifier, b, N)
 
-	random, err := crypto.GetRandomNounce()
-	if err != nil {
-		return err
-	}
-
-	N, err := crypto.GetN()
-	if err != nil {
-		return err
-	}
+	session.SetB(B)
 
 	response := protocol.AuthLogonResponse{
-		B:               B,
+		B:               infrastructure.Reverse(B.Bytes()),
 		GeneratorLength: 1,
 		Generator:       7,
 		NLength:         32,
-		N:               N,
-		Salt:            salt,
-		Random:          random,
+		N:               infrastructure.Reverse(N.Bytes()),
+		Salt:            account.Salt,
+		Random:          crypto.GetVersionChallenge(),
 	}
 
-	if err := infrastructure.Serialize(conn, &response); err != nil {
+	if err := session.WriteAuthLogonResponse(&response); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (handler *LoginHandler) HandleAuthLogonProof(conn infrastructure.Connection) error {
-	// Read the packet from connection
-	packet := protocol.AuthLogonProofRequest{}
-	if err := infrastructure.Deserialize(conn, &packet); err != nil {
-		log.Info("Error encountered while reading AuthLogonProof packet: ", err)
+func (handler *LoginHandler) HandleAuthLogonProof(session *application.Session) error {
+	request, err := session.ReadAuthLogonProofRequest()
+	if err != nil {
 		return err
 	}
 
-	A := packet.A
-	clientM := packet.ClientM
+	A := big.NewInt(0).SetBytes(infrastructure.Reverse(request.A[:]))
 
-	h := sha1.New()
-	h.Write(A[:])
-	h.Write(clientM[:])
-	h.Sum(nil)
+	log.Info("Received ClientM ", request.ClientM)
+	log.Info("Received A ", request.A)
 
-	//S := A
-	// Don't check anything and just return success
-	conn.WriteByte(1)
-	conn.WriteByte(0)
-	//conn.WriteByte([]{})
-	//conn.Write()
+	u := crypto.GetHashU(A, session.B)
+	b := crypto.GetRandomB()
+	S := crypto.ComputeEphemeralS(A, session.Verifier, u, b)
+	K := crypto.ComputeSessionKey(S)
+	M2 := crypto.ComputeSessionVerifier(A, request.ClientM[:], K)
+
+	response := protocol.AuthLogonProofResponse{
+		Command:      1,
+		Error:        0,
+		M2:           M2,
+		AccountFlags: []byte{0x0, 0x80, 0x0, 0x0},
+		SurveyId:     []byte{0x0, 0x0, 0x0, 0x0},
+		LoginFlags:   []byte{0x0, 0x0},
+	}
+
+	if err := session.WriteAuthLogonProofResponse(&response); err != nil {
+		return err
+	}
 
 	return nil
 }

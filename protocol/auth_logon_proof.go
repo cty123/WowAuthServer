@@ -8,3 +8,12 @@ type AuthLogonProofRequest struct {
 	KeyNumber     byte
 	SecurityFlags byte
 }
+
+type AuthLogonProofResponse struct {
+	Command      byte
+	Error        byte
+	M2           []byte
+	AccountFlags []byte
+	SurveyId     []byte
+	LoginFlags   []byte
+}

@@ -6,7 +6,7 @@ type Account struct {
 	Id             int `gorm:"primaryKey"`
 	Username       string
 	Salt           []uint8
-	Verifier       [32]uint8
+	Verifier       []uint8
 	SessionKeyAuth []uint8
 	SessionKeyBnet []uint8
 	TotpSecret     []uint8

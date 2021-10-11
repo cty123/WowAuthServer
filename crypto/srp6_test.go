@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"encoding/hex"
+	"github.com/cty123/trinity-auth-server/infrastructure"
 	"github.com/stretchr/testify/assert"
 	"math/big"
 	"strings"
@@ -15,39 +16,39 @@ func TestComputePublicB(t *testing.T) {
 		t.Fail()
 	}
 
-	publicB, err := ComputePublicB(v)
+	N := GetN()
+	b := GetRandomB()
+	B := ComputePublicB(big.NewInt(0).SetBytes(infrastructure.Reverse(v)), b, N)
 	if err != nil {
 		t.Logf("Incorrect public B returned by function ComputePublicB()")
 		t.Fail()
 	}
 
-	exp := "7B0E4A098401AFF1050A15E9EF34534229E57C70B0DEC81F2CFBCBDC6671DA73"
-	B := strings.ToUpper(hex.EncodeToString(publicB))
+	expect := "7B0E4A098401AFF1050A15E9EF34534229E57C70B0DEC81F2CFBCBDC6671DA73"
+	actual := strings.ToUpper(hex.EncodeToString(infrastructure.Reverse(B.Bytes())))
 
-	assert.Equal(t, exp, B, "The result should be equal")
+	assert.Equal(t, expect, actual, "The result should be equal")
 }
 
-func TestU(t *testing.T) {
+func TestHashU(t *testing.T) {
 	A, err := hex.DecodeString("EC895E045BB7DD628CCFA715116A39CB00C55B6361A229FA8DAC5B73D638773E")
 	if err != nil {
 		t.Logf("Failed to start the test, unable to decode the hex string")
 		t.Fail()
 	}
 
-	clientM, err := hex.DecodeString("7B0E4A098401AFF1050A15E9EF34534229E57C70B0DEC81F2CFBCBDC6671DA73")
+	B, err := hex.DecodeString("7B0E4A098401AFF1050A15E9EF34534229E57C70B0DEC81F2CFBCBDC6671DA73")
 	if err != nil {
 		t.Logf("Failed to start the test, unable to decode the hex string")
 		t.Fail()
 	}
 
-	exp, err := hex.DecodeString("698F90382D1313D5FB888B34F8694BA95E4309E3")
-	if err != nil {
-		t.Logf("Failed to start the test, unable to decode the hex string")
-		t.Fail()
-	}
+	u := GetHashU(big.NewInt(0).SetBytes(A), big.NewInt(0).SetBytes(B))
 
-	u := u(A, clientM)
-	assert.Equal(t, u, big.NewInt(0).SetBytes(exp))
+	expect := "698F90382D1313D5FB888B34F8694BA95E4309E3"
+	actual := strings.ToUpper(hex.EncodeToString(u.Bytes()))
+
+	assert.Equal(t, expect, actual, "The result should be equal")
 }
 
 func TestComputeEphemeralS(t *testing.T) {
@@ -75,14 +76,75 @@ func TestComputeEphemeralS(t *testing.T) {
 		t.Fail()
 	}
 
-	exp, err := hex.DecodeString("4B9AA92FC209E663EF63E3D298661577927A741E7FCAD8E1D6F70CD655FAA645")
+	S := ComputeEphemeralS(
+		big.NewInt(0).SetBytes(infrastructure.Reverse(A)),
+		big.NewInt(0).SetBytes(infrastructure.Reverse(verifier)),
+		big.NewInt(0).SetBytes(infrastructure.Reverse(u)),
+		big.NewInt(0).SetBytes(infrastructure.Reverse(b)))
+
+	expect := "4B9AA92FC209E663EF63E3D298661577927A741E7FCAD8E1D6F70CD655FAA645"
+	actual := strings.ToUpper(hex.EncodeToString(infrastructure.Reverse(S.Bytes())))
+
+	assert.Equal(t, expect, actual)
+}
+
+func TestComputeSessionKey(t *testing.T) {
+	S, err := hex.DecodeString("4B9AA92FC209E663EF63E3D298661577927A741E7FCAD8E1D6F70CD655FAA645")
 	if err != nil {
 		t.Logf("Failed to start the test, unable to decode the hex string")
 		t.Fail()
 	}
 
-	S := ComputeEphemeralS(*big.NewInt(0).SetBytes(reverse(A)), *big.NewInt(0).SetBytes(reverse(verifier)),
-		*big.NewInt(0).SetBytes(reverse(u)), *big.NewInt(0).SetBytes(reverse(b)))
+	K := ComputeSessionKey(big.NewInt(0).SetBytes(S))
 
-	assert.Equal(t, S, *big.NewInt(0).SetBytes(reverse(exp)))
+	expect := "3D41C92C4D1F32BADB7B2D413B6E67BC1A8C483CDE6FFD0D555F922B28617941D6B4E3942842E629"
+	actual := strings.ToUpper(hex.EncodeToString(K.Bytes()))
+
+	assert.Equal(t, expect, actual)
+}
+
+func TestComputeSessionVerifier(t *testing.T) {
+	A, err := hex.DecodeString("EC895E045BB7DD628CCFA715116A39CB00C55B6361A229FA8DAC5B73D638773E")
+	if err != nil {
+		t.Logf("Failed to start the test, unable to decode the hex string")
+		t.Fail()
+	}
+
+	M1, err := hex.DecodeString("C80C301311D04379F0D00393DF0D478A6EEC2D00")
+	if err != nil {
+		t.Logf("Failed to start the test, unable to decode the hex string")
+		t.Fail()
+	}
+
+	K, err := hex.DecodeString("3D41C92C4D1F32BADB7B2D413B6E67BC1A8C483CDE6FFD0D555F922B28617941D6B4E3942842E629")
+	if err != nil {
+		t.Logf("Failed to start the test, unable to decode the hex string")
+		t.Fail()
+	}
+
+	M2 := ComputeSessionVerifier(
+		big.NewInt(0).SetBytes(A),
+		M1,
+		big.NewInt(0).SetBytes(K))
+
+	expect := "1EEA742C32C30B49EA63161E91C38B5525C71CA7"
+	actual := strings.ToUpper(hex.EncodeToString(M2))
+
+	assert.Equal(t, expect, actual)
+}
+
+func TestComputeM1(t *testing.T) {
+	N, _ := hex.DecodeString("B79B3E2A87823CAB8F5EBFBF8EB10108535006298B5BADBD5B53E1895E644B89")
+	s, _ := hex.DecodeString("8598916D316FF8153C23AE77CE67009C683FD10DF8F66F6E96050C870208DB16")
+	K, _ := hex.DecodeString("3D41C92C4D1F32BADB7B2D413B6E67BC1A8C483CDE6FFD0D555F922B28617941D6B4E3942842E629")
+	A, _ := hex.DecodeString("EC895E045BB7DD628CCFA715116A39CB00C55B6361A229FA8DAC5B73D638773E")
+	B, _ := hex.DecodeString("7B0E4A098401AFF1050A15E9EF34534229E57C70B0DEC81F2CFBCBDC6671DA73")
+
+	res := ComputeM1(
+		N,
+		s,
+		A,
+		B,
+		K)
+	t.Log(hex.EncodeToString(res))
 }

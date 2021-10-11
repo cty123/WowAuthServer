@@ -6,7 +6,7 @@ import (
 	"reflect"
 )
 
-func Deserialize(conn Connection, packet interface{}) error {
+func Deserialize(conn *Connection, packet interface{}) error {
 	value := reflect.ValueOf(packet).Elem()
 	if value.Kind() != reflect.Struct {
 		return errors.New("incorrect struct")
@@ -47,7 +47,7 @@ func Deserialize(conn Connection, packet interface{}) error {
 	return nil
 }
 
-func Serialize(conn Connection, packet interface{}) error {
+func Serialize(conn *Connection, packet interface{}) error {
 	value := reflect.ValueOf(packet).Elem()
 	if value.Kind() != reflect.Struct {
 		return errors.New("incorrect struct")
