@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/hex"
 	"github.com/cty123/trinity-auth-server/application"
 	"github.com/cty123/trinity-auth-server/crypto"
 	"github.com/cty123/trinity-auth-server/infrastructure"
@@ -62,13 +63,16 @@ func (handler *LoginHandler) HandleAuthLogon(session *application.Session) error
 	// Retrieve the account from database
 	account := handler.accountService.FindAccountByAccountName(accountName)
 
-	session.SetVerifier(account.Verifier)
-
 	N := crypto.GetN()
 	b := crypto.GetRandomB()
-	B := crypto.ComputePublicB(session.Verifier, b, N)
+	v := big.NewInt(0).SetBytes(infrastructure.Reverse(account.Verifier[:]))
+	B := crypto.ComputePublicB(v, b, N)
 
 	session.SetB(B)
+	session.SetVerifier(v)
+	session.SetAccountName(accountName)
+	session.SetN(N)
+	session.SetSalt(account.Salt)
 
 	response := protocol.AuthLogonResponse{
 		B:               infrastructure.Reverse(B.Bytes()),
@@ -79,6 +83,8 @@ func (handler *LoginHandler) HandleAuthLogon(session *application.Session) error
 		Salt:            account.Salt,
 		Random:          crypto.GetVersionChallenge(),
 	}
+
+	log.Info("Sending N ", hex.EncodeToString(infrastructure.Reverse(N.Bytes())))
 
 	if err := session.WriteAuthLogonResponse(&response); err != nil {
 		return err
@@ -93,16 +99,22 @@ func (handler *LoginHandler) HandleAuthLogonProof(session *application.Session) 
 		return err
 	}
 
+	// A is passed in little endian and therefore needs to be reversed
 	A := big.NewInt(0).SetBytes(infrastructure.Reverse(request.A[:]))
+	B := session.B
 
-	log.Info("Received ClientM ", request.ClientM)
 	log.Info("Received A ", request.A)
 
-	u := crypto.GetHashU(A, session.B)
+	u := crypto.GetHashU(A, B)
 	b := crypto.GetRandomB()
 	S := crypto.ComputeEphemeralS(A, session.Verifier, u, b)
-	K := crypto.ComputeSessionKey(S)
-	M2 := crypto.ComputeSessionVerifier(A, request.ClientM[:], K)
+	K := crypto.ComputeSessionKeyK(S)
+
+	serverM := crypto.ComputeM1(session.N, session.AccountName, session.Salt, A, B, K)
+
+	log.Infof("Computed M1: %s, client M1: %s", hex.EncodeToString(serverM), hex.EncodeToString(request.ClientM[:]))
+
+	M2 := crypto.GetSessionVerifierM2(A, request.ClientM[:], K)
 
 	response := protocol.AuthLogonProofResponse{
 		Command:      1,

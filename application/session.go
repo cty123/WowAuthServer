@@ -8,9 +8,12 @@ import (
 )
 
 type Session struct {
-	Conn     *infrastructure.Connection
-	Verifier *big.Int
-	B        *big.Int
+	Conn        *infrastructure.Connection
+	Salt        []byte
+	Verifier    *big.Int
+	N           *big.Int
+	B           *big.Int
+	AccountName string
 }
 
 func NewSession(conn *infrastructure.Connection) *Session {
@@ -18,6 +21,9 @@ func NewSession(conn *infrastructure.Connection) *Session {
 		conn,
 		nil,
 		nil,
+		nil,
+		nil,
+		"",
 	}
 }
 
@@ -25,12 +31,24 @@ func (session *Session) ReadCommand() (byte, error) {
 	return session.Conn.PeekByte()
 }
 
-func (session *Session) SetVerifier(bytes []byte) {
-	session.Verifier = big.NewInt(0).SetBytes(infrastructure.Reverse(bytes))
+func (session *Session) SetVerifier(verifier *big.Int) {
+	session.Verifier = verifier
+}
+
+func (session *Session) SetN(N *big.Int) {
+	session.N = N
 }
 
 func (session *Session) SetB(B *big.Int) {
 	session.B = B
+}
+
+func (session *Session) SetAccountName(accountName string) {
+	session.AccountName = accountName
+}
+
+func (session *Session) SetSalt(salt []byte) {
+	session.Salt = salt
 }
 
 // Read and write AuthLogonRequest - AuthLogonResponse

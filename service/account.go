@@ -17,6 +17,6 @@ func NewAccountService(db *gorm.DB) *AccountService {
 
 func (accountService *AccountService) FindAccountByAccountName(accountName string) entity.Account {
 	var account entity.Account
-	accountService.db.First(&account, 1)
+	accountService.db.First(&account, 2)
 	return account
 }

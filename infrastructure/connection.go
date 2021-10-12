@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"bufio"
+	log "github.com/sirupsen/logrus"
 	"net"
 )
 
@@ -39,8 +40,10 @@ func (conn *Connection) Read(buf []byte) (int, error) {
 	return conn.reader.Read(buf)
 }
 
-func (conn *Connection) Close() error {
-	return conn.rawConn.Close()
+func (conn *Connection) Close() {
+	if err := conn.rawConn.Close(); err != nil {
+		log.Info("Failed to close connection, ", err)
+	}
 }
 
 func (conn *Connection) PeekByte() (byte, error) {
