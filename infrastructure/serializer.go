@@ -1,6 +1,7 @@
 package infrastructure
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"reflect"
@@ -71,7 +72,25 @@ func Serialize(conn *Connection, packet interface{}) error {
 			}
 		case reflect.Uint8:
 			if err := conn.WriteByte(byte(field.Uint())); err != nil {
-				return errors.New("failed to read from socket")
+				return errors.New("failed to write to socket")
+			}
+		case reflect.Uint16:
+			b := make([]byte, 2)
+			binary.LittleEndian.PutUint16(b, uint16(field.Uint()))
+			if _, err := conn.Write(b); err != nil {
+				return errors.New("failed to write to socket")
+			}
+		case reflect.Uint32:
+			b := make([]byte, 4)
+			binary.LittleEndian.PutUint32(b, uint32(field.Uint()))
+			if _, err := conn.Write(b); err != nil {
+				return errors.New("failed to write to socket")
+			}
+		case reflect.Uint64:
+			b := make([]byte, 8)
+			binary.LittleEndian.PutUint64(b, field.Uint())
+			if _, err := conn.Write(b); err != nil {
+				return errors.New("failed to write to socket")
 			}
 		default:
 			return errors.New("unsupported type")

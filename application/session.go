@@ -88,3 +88,47 @@ func (session *Session) ReadAuthLogonProofRequest() (*protocol.AuthLogonProofReq
 func (session *Session) WriteAuthLogonProofResponse(response *protocol.AuthLogonProofResponse) error {
 	return infrastructure.Serialize(session.Conn, response)
 }
+
+// Read and write RealmListRequest/RealmListResponse
+
+func (session *Session) ReadRealmListRequest() (*protocol.RealmListRequest, error) {
+	request := protocol.RealmListRequest{}
+	if err := infrastructure.Deserialize(session.Conn, &request); err != nil {
+		log.Info("Error encountered while reading RealmListRequest: ", err)
+		return nil, err
+	}
+
+	return &request, nil
+}
+
+func (session *Session) WriteRealmListResponse(
+	header protocol.RealmListResponseHeader,
+	realms []protocol.RealmListResponseBody,
+	footer protocol.RealmListResponseFooter) error {
+
+	size := 4 + 2
+	for _, realm := range realms {
+		size += 1 + 1 + 1
+		size += len(realm.RealmName)
+		size += len(realm.AddressPort)
+		size += 4 + 1 + 1 + 1
+	}
+	size += 2
+
+	header.Size = uint16(size)
+	if err := infrastructure.Serialize(session.Conn, &header); err != nil {
+		return err
+	}
+
+	for _, realm := range realms {
+		if err := infrastructure.Serialize(session.Conn, &realm); err != nil {
+			return err
+		}
+	}
+
+	if err := infrastructure.Serialize(session.Conn, &footer); err != nil {
+		return err
+	}
+
+	return nil
+}

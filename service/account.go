@@ -20,3 +20,9 @@ func (accountService *AccountService) FindAccountByAccountName(accountName strin
 	accountService.db.First(&account, 2)
 	return account
 }
+
+func (accountService *AccountService) FindAllRealms() []entity.Realm {
+	var realm []entity.Realm
+	accountService.db.Find(&realm)
+	return realm
+}

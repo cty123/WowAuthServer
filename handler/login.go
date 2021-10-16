@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/hex"
+	"fmt"
 	"github.com/cty123/trinity-auth-server/application"
 	"github.com/cty123/trinity-auth-server/crypto"
 	"github.com/cty123/trinity-auth-server/infrastructure"
@@ -29,6 +30,7 @@ func NewLoginHandler(accountService *service.AccountService) LoginHandler {
 func (handler *LoginHandler) initialize() {
 	handler.handlerMap[0] = handler.HandleAuthLogon
 	handler.handlerMap[1] = handler.HandleAuthLogonProof
+	handler.handlerMap[16] = handler.HandleRealmList
 }
 
 func (handler *LoginHandler) Handle(conn infrastructure.Connection) error {
@@ -126,6 +128,46 @@ func (handler *LoginHandler) HandleAuthLogonProof(session *application.Session) 
 	}
 
 	if err := session.WriteAuthLogonProofResponse(&response); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (handler *LoginHandler) HandleRealmList(session *application.Session) error {
+	_, err := session.ReadRealmListRequest()
+	if err != nil {
+		return err
+	}
+
+	realmList := handler.accountService.FindAllRealms()
+
+	responseHeader := protocol.RealmListResponseHeader{
+		Command:  16,
+		Size:     0,
+		Padding:  0,
+		RealmNum: uint16(len(realmList)),
+	}
+
+	realms := make([]protocol.RealmListResponseBody, len(realmList))
+	for i, realm := range realmList {
+		realms[i] = protocol.RealmListResponseBody{
+			RealmType:     realm.Icon,
+			Locked:        0,
+			RealmFlags:    realm.Flag,
+			RealmName:     append([]byte(realm.Name), []byte{0}...),
+			AddressPort:   append([]byte(fmt.Sprintf("%s:%d", realmList[i].Address, realmList[i].Port)), []byte{0}...),
+			Population:    realmList[i].Population,
+			NumCharacter:  0,
+			RealmCategory: realmList[i].Timezone,
+			RealmId:       realmList[i].Id,
+		}
+	}
+
+	responseFooter := protocol.RealmListResponseFooter{Padding: 0x1000}
+
+	if err := session.WriteRealmListResponse(responseHeader, realms, responseFooter); err != nil {
+		log.Errorf("Failed to write response: %s", err)
 		return err
 	}
 
