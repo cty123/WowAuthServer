@@ -70,21 +70,17 @@ func (handler *LoginHandler) HandleAuthLogon(session *application.Session) error
 	v := big.NewInt(0).SetBytes(infrastructure.Reverse(account.Verifier[:]))
 	B := crypto.ComputePublicB(v, b, N)
 
-	session.SetB(B)
-	session.SetVerifier(v)
-	session.SetAccountName(accountName)
-	session.SetN(N)
-	session.SetSalt(account.Salt)
+	session.SetSessionSecrets(v, N, B, accountName, account.Salt)
 
 	response := protocol.AuthLogonResponse{
-		B:               infrastructure.Reverse(B.Bytes()),
 		GeneratorLength: 1,
 		Generator:       7,
 		NLength:         32,
-		N:               infrastructure.Reverse(N.Bytes()),
-		Salt:            account.Salt,
-		Random:          crypto.GetVersionChallenge(),
 	}
+	copy(response.B[:], infrastructure.Reverse(B.Bytes()))
+	copy(response.N[:], infrastructure.Reverse(N.Bytes()))
+	copy(response.Salt[:], account.Salt)
+	copy(response.Random[:], crypto.GetVersionChallenge())
 
 	log.Info("Sending N ", hex.EncodeToString(infrastructure.Reverse(N.Bytes())))
 
@@ -118,14 +114,16 @@ func (handler *LoginHandler) HandleAuthLogonProof(session *application.Session) 
 
 	M2 := crypto.GetSessionVerifierM2(A, request.ClientM[:], K)
 
+	handler.accountService.SaveAccountInfo(session.AccountName, K)
+
 	response := protocol.AuthLogonProofResponse{
 		Command:      1,
 		Error:        0,
-		M2:           M2,
-		AccountFlags: []byte{0x0, 0x80, 0x0, 0x0},
-		SurveyId:     []byte{0x0, 0x0, 0x0, 0x0},
-		LoginFlags:   []byte{0x0, 0x0},
+		AccountFlags: 0x00800000,
+		SurveyId:     0,
+		LoginFlags:   0,
 	}
+	copy(response.M2[:], M2)
 
 	if err := session.WriteAuthLogonProofResponse(&response); err != nil {
 		return err
@@ -135,8 +133,7 @@ func (handler *LoginHandler) HandleAuthLogonProof(session *application.Session) 
 }
 
 func (handler *LoginHandler) HandleRealmList(session *application.Session) error {
-	_, err := session.ReadRealmListRequest()
-	if err != nil {
+	if _, err := session.ReadRealmListRequest(); err != nil {
 		return err
 	}
 
@@ -164,7 +161,9 @@ func (handler *LoginHandler) HandleRealmList(session *application.Session) error
 		}
 	}
 
-	responseFooter := protocol.RealmListResponseFooter{Padding: 0x1000}
+	responseFooter := protocol.RealmListResponseFooter{
+		Padding: 0x1000,
+	}
 
 	if err := session.WriteRealmListResponse(responseHeader, realms, responseFooter); err != nil {
 		log.Errorf("Failed to write response: %s", err)

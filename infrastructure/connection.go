@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"bufio"
 	log "github.com/sirupsen/logrus"
+	"io"
 	"net"
 )
 
@@ -53,4 +54,12 @@ func (conn *Connection) PeekByte() (byte, error) {
 	}
 
 	return bytes[0], nil
+}
+
+func (conn *Connection) Writer() io.Writer {
+	return conn.writer
+}
+
+func (conn *Connection) Reader() io.Reader {
+	return conn.reader
 }

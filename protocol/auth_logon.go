@@ -19,12 +19,12 @@ type AuthLogonResponse struct {
 	Command         byte
 	Unknown1        byte
 	Status          byte
-	B               []byte
+	B               [32]byte
 	GeneratorLength byte
 	Generator       byte
 	NLength         byte
-	N               []byte
-	Salt            []byte
-	Random          []byte
+	N               [32]byte
+	Salt            [32]byte
+	Random          [16]byte
 	SecurityFlags   byte
 }

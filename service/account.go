@@ -26,3 +26,7 @@ func (accountService *AccountService) FindAllRealms() []entity.Realm {
 	accountService.db.Find(&realm)
 	return realm
 }
+
+func (accountService *AccountService) SaveAccountInfo(username string, sessionKey []byte) {
+	accountService.db.Model(&entity.Account{}).Where("username", username).Update("session_key_auth", sessionKey)
+}

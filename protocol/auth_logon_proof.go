@@ -12,8 +12,8 @@ type AuthLogonProofRequest struct {
 type AuthLogonProofResponse struct {
 	Command      byte
 	Error        byte
-	M2           []byte
-	AccountFlags []byte
-	SurveyId     []byte
-	LoginFlags   []byte
+	M2           [20]byte
+	AccountFlags uint32
+	SurveyId     uint32
+	LoginFlags   uint16
 }

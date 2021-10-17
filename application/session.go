@@ -1,6 +1,7 @@
 package application
 
 import (
+	"encoding/binary"
 	"github.com/cty123/trinity-auth-server/infrastructure"
 	"github.com/cty123/trinity-auth-server/protocol"
 	log "github.com/sirupsen/logrus"
@@ -31,53 +32,49 @@ func (session *Session) ReadCommand() (byte, error) {
 	return session.Conn.PeekByte()
 }
 
-func (session *Session) SetVerifier(verifier *big.Int) {
+func (session *Session) SetSessionSecrets(verifier *big.Int, N *big.Int, B *big.Int, accountName string, salt []byte) {
 	session.Verifier = verifier
-}
-
-func (session *Session) SetN(N *big.Int) {
 	session.N = N
-}
-
-func (session *Session) SetB(B *big.Int) {
 	session.B = B
-}
-
-func (session *Session) SetAccountName(accountName string) {
 	session.AccountName = accountName
-}
-
-func (session *Session) SetSalt(salt []byte) {
 	session.Salt = salt
 }
 
 // Read and write AuthLogonRequest - AuthLogonResponse
 
 func (session *Session) ReadAuthLogonRequest() (*protocol.AuthLogonRequest, string, error) {
-	packet := protocol.AuthLogonRequest{}
-	if err := infrastructure.Deserialize(session.Conn, &packet); err != nil {
-		log.Info("Error encountered while reading AuthLogonRequest: ", err)
+	request := protocol.AuthLogonRequest{}
+	if err := binary.Read(session.Conn.Reader(), binary.LittleEndian, &request); err != nil {
+		log.Info("Error encountered while reading AuthLogonProofRequest: ", err)
 		return nil, "", err
 	}
 
-	accountBuffer := make([]byte, packet.ChallengeLength)
+	accountBuffer := make([]byte, request.ChallengeLength)
 	if _, err := session.Conn.Read(accountBuffer); err != nil {
 		log.Info("Error encountered while reading account name: ", err)
 		return nil, "", err
 	}
 
-	return &packet, string(accountBuffer), nil
+	return &request, string(accountBuffer), nil
 }
 
 func (session *Session) WriteAuthLogonResponse(response *protocol.AuthLogonResponse) error {
-	return infrastructure.Serialize(session.Conn, response)
+	if err := binary.Write(session.Conn.Writer(), binary.LittleEndian, response); err != nil {
+		return err
+	}
+
+	if err := session.Conn.Flush(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Read and write AuthLogonProofRequest/AuthLogonProofResponse
 
 func (session *Session) ReadAuthLogonProofRequest() (*protocol.AuthLogonProofRequest, error) {
 	request := protocol.AuthLogonProofRequest{}
-	if err := infrastructure.Deserialize(session.Conn, &request); err != nil {
+	if err := binary.Read(session.Conn.Reader(), binary.LittleEndian, &request); err != nil {
 		log.Info("Error encountered while reading AuthLogonProofRequest: ", err)
 		return nil, err
 	}
@@ -86,7 +83,15 @@ func (session *Session) ReadAuthLogonProofRequest() (*protocol.AuthLogonProofReq
 }
 
 func (session *Session) WriteAuthLogonProofResponse(response *protocol.AuthLogonProofResponse) error {
-	return infrastructure.Serialize(session.Conn, response)
+	if err := binary.Write(session.Conn.Writer(), binary.BigEndian, response); err != nil {
+		return err
+	}
+
+	if err := session.Conn.Flush(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Read and write RealmListRequest/RealmListResponse
